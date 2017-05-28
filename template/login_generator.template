@@ -1,0 +1,82 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'Creates login URL generator lambda.'
+
+Resources:
+
+  LambdaExecutionerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+
+  LambdaRolePolicies:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: url-generator
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Action: events:*
+            Resource: "*"
+          -
+            Effect: Allow
+            Action:
+              - lambda:AddPermission
+              - lambda:RemovePermission
+            Resource: !Sub |-
+                arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:lambda_login_generator
+          -
+            Effect: Allow
+            Action:
+              - iam:UpdateAssumeRolePolicy
+              - iam:AttachRolePolicy
+              - iam:DetachRolePolicy
+              - iam:CreateRole
+              - iam:DeleteRole
+              - iam:GetRole
+              - iam:List*
+              - sts:AssumeRole
+            Resource: "*"
+          -
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+            Resource:
+              !Sub |-
+                arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*
+          -
+            Effect: Allow
+            Action:
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource:
+              !Sub |-
+                arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/lambda_login_generator:*
+      Roles:
+        -
+          !Ref LambdaExecutionerRole
+
+  ScheduledFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: lambda_login_generator
+      Handler: lambda_login_generator.lambda_handler
+      Runtime: python2.7
+      CodeUri: ../code/publish/lambda_login_generator.zip
+      Timeout: 300
+      Role: !GetAtt LambdaExecutionerRole.Arn
+      Environment:
+        Variables:
+          EXECUTIONER_ROLE: !GetAtt LambdaExecutionerRole.Arn
