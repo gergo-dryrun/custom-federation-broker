@@ -18,16 +18,11 @@ import click
               help='Comma separated list of managed policies.\n'
                    'Example: ReadOnlyAccess,arn:aws:iam::<YOUR_ACC_NUMBER>:policy/my-managed-policy',
               required=False)
-@click.option('--duration',
-              help='Duration of console session, in hours. Between 1 - 12, defaults to 1 if not specified.',
-              type=click.IntRange(1, 12),
-              required=False,
-              default=1)
 @click.option('--lambda_function_name',
               help='Name of login URL generator lambda function.',
               required=False,
               default='lambda_login_generator')
-def main(role, policies, duration, lambda_function_name):
+def main(role, policies, lambda_function_name):
     if not any([role, policies]) or all([role, policies]):
         print 'You must specify either a role or a list of policies. \n' \
               'Please see ./login_generator_client.py --help.'
@@ -37,14 +32,12 @@ def main(role, policies, duration, lambda_function_name):
     if policies:
         payload = {
             'type': 'policies',
-            'target': policies.split(','),
-            'duration': duration
+            'target': policies.split(',')
         }
     else:
         payload = {
             'type': 'role',
-            'target': role,
-            'duration': duration
+            'target': role
         }
 
     response = lambda_client.invoke(FunctionName=lambda_function_name,
