@@ -271,23 +271,19 @@ class PoliciesGenerator(BaseGenerator):
               'Id: %s' % (rule_arn, self.role_name, rule_name)
 
 
-generator_types = {'role': RoleGenerator,
+GENERATOR_TYPES = {'role': RoleGenerator,
                    'policies': PoliciesGenerator}
 
 
 def generate_login(event, context):
     event_type = event.get('type')
     event_target = event.get('target')
-    print generator_types.get(event_type)(context=context, event_target=event_target)()
+    print GENERATOR_TYPES.get(event_type)(context=context, event_target=event_target)()
 
 
 def cleanup_login(event, context):
     event_type = event.get('type')
-    # event_target = event.get('target')
-    # role_name = event.get('role_name')
-    # rule_name = event.get('rule_name')
-    # rule_name = event.get('rule_name')
-    generator_types.get(event_type)(context=context).cleanup(**event)
+    GENERATOR_TYPES.get(event_type)(context=context).cleanup(**event)
 
 
 action_types = {'generate': generate_login,
