@@ -2,14 +2,14 @@
 
 If you ever came across the need to grant somebody console access to your AWS account, you are familiar with the tedious process of creating an user, configuring permissions and keeping track of the user.
 
-A common alternative is to use `SAML 2.0 Federated Access`, either by configuring an on-premise IdentityProvider, such as `Microsoft Active Directory Federation Service` or, the open-source alternative, `Shibboleth`. If you want to know more about getting started on that I highly recommend [Single Sign-On: Integrating AWS, OpenLDAP, and Shibboleth whitepaper.](http://d0.awsstatic.com/whitepapers/aws-whitepaper-single-sign-on-integrating-aws-open-ldap-and-shibboleth.pdf) <sup>[1](#myfootnote1)</sup>
+A common alternative is to use `SAML 2.0 Federated Access`<sup>[1](#myfootnote1)</sup>, either by configuring an on-premise IdentityProvider, such as `Microsoft Active Directory Federation Service` or, the open-source alternative, `Shibboleth`. If you want to know more about getting started on that I highly recommend [Single Sign-On: Integrating AWS, OpenLDAP, and Shibboleth whitepaper.](http://d0.awsstatic.com/whitepapers/aws-whitepaper-single-sign-on-integrating-aws-open-ldap-and-shibboleth.pdf) <sup>[2](#myfootnote2)</sup>
 
-However, if don't want to go as far as setting up ADFS or Shibboleth, there's another option: creating your own `Custom Federation Broker`, and that's what the lambda within this repository is.
+However, if don't want to go as far as setting up ADFS or Shibboleth, there's another option: creating your own `Custom Federation Broker`<sup>[3](#myfootnote3)</sup>, and that's what the lambda within this [repository](https://github.com/gergo-dryrun/custom-federation-broker) is.
 
-Because we are dealing with IAM, which is in its nature highly sensitive, I **strongly** recommend you check out the repository and give the `code/lambda_login_generator/lambda_login_generator.py` a read-through.
+Because we are dealing with IAM, which is in its nature highly sensitive, I **strongly** recommend you check out the [repository](https://github.com/gergo-dryrun/custom-federation-broker) and give the `code/lambda_login_generator/lambda_login_generator.py` a read-through.
 Not that you shouldn't trust me, but it's best to be aware of the things that you decide to deploy in your AWS account.
 
-Once you forked the repo, you deploy your own stack using the attached Makefile:
+Once you forked the [repo](https://github.com/gergo-dryrun/custom-federation-broker), you deploy your own stack using the attached Makefile:
 
 ```bash
 make BUCKET_NAME=existing_bucket_of_choice STACK_NAME=login-generator deploy
@@ -57,7 +57,7 @@ Options:
 
 If you decide to use the `--policies` option then a temporary role will be created which contains all the managed policies you passed in.
 
-Once the role exists, we invoke `AWS STS AssumeRole` on it. With the set of temporary credentials from AssumeRole, we will call the `AWS federation endpoint`.
+Once the role exists, we invoke `AWS STS AssumeRole`<sup>[4](#myfootnote4)</sup> on it. With the set of temporary credentials from AssumeRole, we will call the `AWS federation endpoint`.
 
 The federation endpoint will return a short-lived login URL.
 
@@ -86,4 +86,10 @@ And there you go, now you have a simple and reliable way to grant others console
 
 ***
 
-<a name="myfootnote1">1</a>: I do plan on having an entry/project dedicated to that in the near-future.
+<a name="myfootnote1">1</a>: <http://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_enable-console-saml.html>
+
+<a name="myfootnote2">2</a>: <http://d0.awsstatic.com/whitepapers/aws-whitepaper-single-sign-on-integrating-aws-open-ldap-and-shibboleth.pdf>
+
+<a name="myfootnote3">3</a>: <http://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_enable-console-custom-url.html>
+
+<a name="myfootnote4">4</a>: <http://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRole.html>
