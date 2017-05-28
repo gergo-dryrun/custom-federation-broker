@@ -10,7 +10,7 @@ from retrying import retry
 LAMBDA_EXECUTIONER_ROLE = os.getenv('EXECUTIONER_ROLE')
 RETRY_PARAMS = {'wait_exponential_multiplier': 1000,
                 'wait_exponential_max': 10000,
-                'stop_max_attempt_number': 5
+                'stop_max_attempt_number': 6
                 }
 
 
@@ -74,8 +74,8 @@ class BaseGenerator(object):
     def _create_cw_events_rule(self):
         rule_name = 'temporary-login-cleanup-%s' % uuid.uuid4()
         now = datetime.now()
-        # TODO: don't forget to remove the -1 from hourwhen deploying to lambda & adjust hour instead of minutes
-        scheduled_expression = 'cron(%s %s * * ? *)' % (now.minute + 2, now.hour - 1 % 24)
+        # We're scheduling the removal for 1 hour in the future as that's how long the session can last at most
+        scheduled_expression = 'cron(%s %s * * ? *)' % (now.minute, (now.hour + 1) % 24)
         print 'Creating CloudWatch Events Rule %s - %s' % (rule_name, scheduled_expression)
         response = self.events_client.put_rule(
             Name=rule_name,
@@ -149,7 +149,6 @@ class RoleGenerator(BaseGenerator):
         assume_role_policy.update(PolicyDocument=json.dumps(existing_policy))
         print 'Successfully updated trust policy of %s' % self.role_name
 
-    @retry(**RETRY_PARAMS)
     def get_assume_role_policy(self):
         print 'Retrieving existing trust policy of %s' % self.role_name
         assume_role_policy = self.iam_resource.AssumeRolePolicy(self.role_name)
@@ -236,15 +235,22 @@ class PoliciesGenerator(BaseGenerator):
         self.clean_up_cw_event(rule_name)
         print 'Cleanup finished'
 
-    @retry(**RETRY_PARAMS)
     def _delete_role(self, role_name):
         print 'Deleting role %s' % role_name
         role = self.iam_resource.Role(role_name)
         for policy in role.attached_policies.all():
             print 'Removing attached policy %s' % policy.arn
-            role.detach_policy(PolicyArn=policy.arn)
-        role.delete()
+            self._detach_policy(policy, role)
+        self._delete_iam_role(role)
         print 'Successfully deleted role %s' % role_name
+
+    @retry(**RETRY_PARAMS)
+    def _detach_policy(self, policy, role):
+        role.detach_policy(PolicyArn=policy.arn)
+
+    @retry(**RETRY_PARAMS)
+    def _delete_iam_role(self, role):
+        role.delete()
 
     @retry(**RETRY_PARAMS)
     def _put_target(self, rule_arn):
@@ -278,7 +284,7 @@ GENERATOR_TYPES = {'role': RoleGenerator,
 def generate_login(event, context):
     event_type = event.get('type')
     event_target = event.get('target')
-    print GENERATOR_TYPES.get(event_type)(context=context, event_target=event_target)()
+    return GENERATOR_TYPES.get(event_type)(context=context, event_target=event_target)()
 
 
 def cleanup_login(event, context):
@@ -292,7 +298,7 @@ action_types = {'generate': generate_login,
 
 def lambda_handler(event, context):
     action_type = event.get('action', 'generate')
-    action_types.get(action_type)(event, context)
+    return action_types.get(action_type)(event, context)
 
 
 if __name__ == '__main__':
