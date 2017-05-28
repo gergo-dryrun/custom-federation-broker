@@ -22,6 +22,7 @@ class BaseGenerator(object):
         self.iam_resource = boto3.resource('iam')
         self.events_client = boto3.client('events')
         self.lambda_client = boto3.client('lambda')
+        self.duration = kwargs.get('duration', 1)
         self.lambda_trust_statement = {'Action': 'sts:AssumeRole',
                                        'Effect': 'Allow',
                                        'Principal': {'AWS': LAMBDA_EXECUTIONER_ROLE}}
@@ -45,7 +46,8 @@ class BaseGenerator(object):
         request_parameters = {'Action': 'login',
                               'Issuer': 'demo-issuer',
                               'Destination': 'https://console.aws.amazon.com/',
-                              'SigninToken': signin_token['SigninToken']
+                              'SigninToken': signin_token['SigninToken'],
+                              'SessionDuration': self.duration
                               }
         req = requests.Request('GET',
                                'https://signin.aws.amazon.com/federation',
@@ -75,7 +77,7 @@ class BaseGenerator(object):
         rule_name = 'temporary-login-cleanup-%s' % uuid.uuid4()
         now = datetime.now()
         # We're scheduling the removal for 1 hour in the future as that's how long the session can last at most
-        scheduled_expression = 'cron(%s %s * * ? *)' % (now.minute, (now.hour + 1) % 24)
+        scheduled_expression = 'cron(%s %s * * ? *)' % (now.minute, (now.hour + self.duration) % 24)
         print 'Creating CloudWatch Events Rule %s - %s' % (rule_name, scheduled_expression)
         response = self.events_client.put_rule(
             Name=rule_name,
@@ -284,7 +286,10 @@ GENERATOR_TYPES = {'role': RoleGenerator,
 def generate_login(event, context):
     event_type = event.get('type')
     event_target = event.get('target')
-    return GENERATOR_TYPES.get(event_type)(context=context, event_target=event_target)()
+    duration = event.get('duration')
+    return GENERATOR_TYPES.get(event_type)(context=context,
+                                           event_target=event_target,
+                                           duration=duration)()
 
 
 def cleanup_login(event, context):
@@ -305,7 +310,8 @@ if __name__ == '__main__':
     """ IGNORE THIS. Just for local testing."""
     client_event_body_1 = {
         "type": "role",
-        "target": "arn:aws:iam::%s:role/test-tust-entity" % os.getenv('ACCOUNT_NUMBER')
+        "target": "arn:aws:iam::%s:role/test-tust-entity" % os.getenv('ACCOUNT_NUMBER'),
+        "duration": 2
     }
     client_event_body_1_cleanup = {'action': 'cleanup',
                                    'rule_name': 'temporary-login-cleanup-10c71aff-f736-497e-9ad4-844310a74bf7',
@@ -313,7 +319,8 @@ if __name__ == '__main__':
                                    'type': 'role'}
     client_event_body_2 = {
         "type": "policies",
-        "target": ['ReadOnlyAccess', 'arn:aws:iam::%s:policy/test-user-managed-policy' % os.getenv('ACCOUNT_NUMBER')]
+        "target": ['ReadOnlyAccess', 'arn:aws:iam::%s:policy/test-user-managed-policy' % os.getenv('ACCOUNT_NUMBER')],
+        "duration": 2
     }
     client_event_body_2_cleanup = {
         'rule_name': 'temporary-login-cleanup-5ea5950c-4903-47c1-8d98-eb9864b07c8e',
@@ -327,5 +334,5 @@ if __name__ == '__main__':
                         'invoked_function_arn': 'arn:aws:lambda:eu-west-1:%s:function:test-event-body'
                                                 % os.getenv('ACCOUNT_NUMBER')}
                        )()
-    lambda_handler(client_event_body_2_cleanup, context_obj)
+    lambda_handler(client_event_body_1, context_obj)
 
