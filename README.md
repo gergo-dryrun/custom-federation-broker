@@ -80,10 +80,11 @@ And there you go, now you have a simple and reliable way to grant others console
  * Keep in mind that the URL grants access to your AWS resources through the AWS Management Console to the extent that you have enabled permissions in the associated temporary security credentials. For this reason, you should treat the URL as a secret.
  * Even though the federated login session can last up to 12 hours, the login link is only valid for 15 minutes after generation.
 
-#### Prerequisites
+#### Requirements
 
-* [jq](https://stedolan.github.io/jq/) version >=1.4
 * [awscli](http://docs.aws.amazon.com/cli/latest/userguide/installing.html) version >=1.11.36
+* [click](http://click.pocoo.org/5/) version >=6.7
+* [boto3](http://boto3.readthedocs.io/en/latest/) version >=1.4.4
 
 ***
 

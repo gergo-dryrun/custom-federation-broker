@@ -15,7 +15,6 @@ clean:
 	@echo ""
 
 deps:
-	@which jq || ( which brew && brew install jq || which apt-get && apt-get install jq || which yum && yum install jq || which choco && choco install jq)
 	@which aws || pip install awscli
 
 deploy: clean package_code deps
