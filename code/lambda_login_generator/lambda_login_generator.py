@@ -15,7 +15,8 @@ RETRY_PARAMS = {'wait_exponential_multiplier': 1000,
 
 
 class BaseGenerator(object):
-    def __init__(self, context):
+
+    def __init__(self, context, **kwargs):
         self.context = context
         self.iam_client = boto3.client('iam')
         self.iam_resource = boto3.resource('iam')
@@ -73,7 +74,7 @@ class BaseGenerator(object):
     def _create_cw_events_rule(self):
         rule_name = 'temporary-login-cleanup-%s' % uuid.uuid4()
         now = datetime.now()
-        # TODO: don't forget to remove the -1 when deploying to lambda
+        # TODO: don't forget to remove the -1 from hourwhen deploying to lambda & adjust hour instead of minutes
         scheduled_expression = 'cron(%s %s * * ? *)' % (now.minute + 2, now.hour - 1 % 24)
         print 'Creating CloudWatch Events Rule %s - %s' % (rule_name, scheduled_expression)
         response = self.events_client.put_rule(
@@ -98,7 +99,7 @@ class BaseGenerator(object):
             SourceArn=rule_arn)
         print 'Successfully added invoke function statement: %s' % statement_id
 
-    def cleanup(self, rule_name):
+    def cleanup(self, **kwargs):
         raise NotImplementedError
 
     def _put_target(self, rule_arn):
@@ -126,11 +127,13 @@ class BaseGenerator(object):
 
 
 class RoleGenerator(BaseGenerator):
-    def __init__(self, context, role_arn):
-        super(RoleGenerator, self).__init__(context)
+
+    def __init__(self, **kwargs):
+        super(RoleGenerator, self).__init__(**kwargs)
         self.type = 'role'
-        self.role_arn = role_arn
-        self.role_name = role_arn.split('/')[-1]
+        self.role_arn = kwargs.get('event_target')
+        if self.role_arn:
+            self.role_name = self.role_arn.split('/')[-1]
 
     def __call__(self):
         self._update_trust_policy()
@@ -187,17 +190,18 @@ class RoleGenerator(BaseGenerator):
         assume_role_policy.update(PolicyDocument=json.dumps(existing_policy))
         print 'Successfully removed temporary statement from Trust Policy on target role.'
 
-    def cleanup(self, rule_name):
+    def cleanup(self, rule_name, role_arn, **kwargs):
+        self.role_name = role_arn.split('/')[-1]
         self._restore_trust_policy()
         self.clean_up_cw_event(rule_name)
 
 
 class PoliciesGenerator(BaseGenerator):
-    def __init__(self, context, policies, role_name=None):
-        super(PoliciesGenerator, self).__init__(context)
-        self.managed_policies = policies
+    def __init__(self, **kwargs):
+        super(PoliciesGenerator, self).__init__(**kwargs)
         self.type = 'policies'
-        self.role_name = role_name or str(uuid.uuid4())
+        self.managed_policies = kwargs.get('event_target')
+        self.role_name = str(uuid.uuid4())
 
     def __call__(self):
         role = self._create_temp_role()
@@ -226,21 +230,21 @@ class PoliciesGenerator(BaseGenerator):
             role.attach_policy(PolicyArn=managed_policy_arn)
             print 'Successfully attached policy %s' % managed_policy_arn
 
-    def cleanup(self, rule_name):
+    def cleanup(self, rule_name, role_name, **kwargs):
         print 'Cleaning up config for %s' % rule_name
-        self._delete_role()
+        self._delete_role(role_name)
         self.clean_up_cw_event(rule_name)
         print 'Cleanup finished'
 
     @retry(**RETRY_PARAMS)
-    def _delete_role(self):
-        print 'Deleting role %s' % self.role_name
-        role = self.iam_resource.Role(self.role_name)
+    def _delete_role(self, role_name):
+        print 'Deleting role %s' % role_name
+        role = self.iam_resource.Role(role_name)
         for policy in role.attached_policies.all():
             print 'Removing attached policy %s' % policy.arn
             role.detach_policy(PolicyArn=policy.arn)
         role.delete()
-        print 'Successfully deleted role %s' % self.role_name
+        print 'Successfully deleted role %s' % role_name
 
     @retry(**RETRY_PARAMS)
     def _put_target(self, rule_arn):
@@ -274,15 +278,16 @@ generator_types = {'role': RoleGenerator,
 def generate_login(event, context):
     event_type = event.get('type')
     event_target = event.get('target')
-    return generator_types.get(event_type)(context, event_target)()
+    print generator_types.get(event_type)(context=context, event_target=event_target)()
 
 
 def cleanup_login(event, context):
     event_type = event.get('type')
-    event_target = event.get('target')
-    role_name = event.get('role_name')
-    rule_name = event.get('rule_name')
-    generator_types.get(event_type)(context, event_target, role_name=role_name).cleanup(rule_name)
+    # event_target = event.get('target')
+    # role_name = event.get('role_name')
+    # rule_name = event.get('rule_name')
+    # rule_name = event.get('rule_name')
+    generator_types.get(event_type)(context=context).cleanup(**event)
 
 
 action_types = {'generate': generate_login,
@@ -300,7 +305,7 @@ if __name__ == '__main__':
         "target": "arn:aws:iam::%s:role/test-tust-entity" % os.getenv('ACCOUNT_NUMBER')
     }
     client_event_body_1_cleanup = {'action': 'cleanup',
-                                   'rule_name': 'temporary-login-cleanup-6b7508fc-69d8-4c08-85a7-301d632bac88',
+                                   'rule_name': 'temporary-login-cleanup-10c71aff-f736-497e-9ad4-844310a74bf7',
                                    'role_arn': 'arn:aws:iam::%s:role/test-tust-entity' % os.getenv('ACCOUNT_NUMBER'),
                                    'type': 'role'}
     client_event_body_2 = {
@@ -308,8 +313,8 @@ if __name__ == '__main__':
         "target": ['ReadOnlyAccess', 'arn:aws:iam::%s:policy/test-user-managed-policy' % os.getenv('ACCOUNT_NUMBER')]
     }
     client_event_body_2_cleanup = {
-        'rule_name': 'temporary-login-cleanup-213f6574-2577-4079-a67e-b356e30161b3',
-        'role_name': '6644579d-5b17-4a8b-8f63-fc9e6b8e43db',
+        'rule_name': 'temporary-login-cleanup-5ea5950c-4903-47c1-8d98-eb9864b07c8e',
+        'role_name': 'cfffaadf-eb10-4849-8568-6e4a1d184ae2',
         'type': 'policies',
         'action': 'cleanup'}
 
@@ -319,7 +324,7 @@ if __name__ == '__main__':
                         'invoked_function_arn': 'arn:aws:lambda:eu-west-1:%s:function:test-event-body'
                                                 % os.getenv('ACCOUNT_NUMBER')}
                        )()
-    lambda_handler(client_event_body_1, context_obj)
+    lambda_handler(client_event_body_2_cleanup, context_obj)
 
 scheduled_event_body = {
     "account": "123456789012",
